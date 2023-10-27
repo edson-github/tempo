@@ -98,9 +98,7 @@ def _appendAggKey(
     parsed_freq = checkAllowableFreq(freq)
     period, unit = parsed_freq[0], parsed_freq[1]
 
-    agg_window = sfn.window(
-        sfn.col(tsdf.ts_col), "{} {}".format(period, freq_dict[unit])  # type: ignore[literal-required]
-    )
+    agg_window = sfn.window(sfn.col(tsdf.ts_col), f"{period} {freq_dict[unit]}")
 
     df = df.withColumn("agg_key", agg_window)
 
@@ -137,11 +135,7 @@ def aggregate(
     if metricCols is None:
         metricCols = list(set(df.columns).difference(set(groupingCols + [tsdf.ts_col])))
 
-    if prefix is None:
-        prefix = ""
-    else:
-        prefix = prefix + "_"
-
+    prefix = "" if prefix is None else f"{prefix}_"
     groupingCols = [sfn.col(column) for column in groupingCols]
 
     if func == floor:
@@ -151,7 +145,7 @@ def aggregate(
             *groupingCols, sfn.col("closest_data.*")
         )
         new_cols = [sfn.col(tsdf.ts_col)] + [
-            sfn.col(c).alias("{}".format(prefix) + c) for c in metricCols
+            sfn.col(c).alias(f"{prefix}{c}") for c in metricCols
         ]
         res = res.select(*groupingCols, *new_cols)
     elif func == average:
@@ -164,7 +158,7 @@ def aggregate(
         )
         new_cols = [
             sfn.col(c).alias(
-                "{}".format(prefix) + (c.split("avg(")[1]).replace(")", "")
+                f"{prefix}" + (c.split("avg(")[1]).replace(")", "")
             )
             for c in agg_metric_cls
         ]
@@ -179,7 +173,7 @@ def aggregate(
         )
         new_cols = [
             sfn.col(c).alias(
-                "{}".format(prefix) + (c.split("min(")[1]).replace(")", "")
+                f"{prefix}" + (c.split("min(")[1]).replace(")", "")
             )
             for c in agg_metric_cls
         ]
@@ -194,7 +188,7 @@ def aggregate(
         )
         new_cols = [
             sfn.col(c).alias(
-                "{}".format(prefix) + (c.split("max(")[1]).replace(")", "")
+                f"{prefix}" + (c.split("max(")[1]).replace(")", "")
             )
             for c in agg_metric_cls
         ]
@@ -206,7 +200,7 @@ def aggregate(
             *groupingCols, sfn.col("ceil_data.*")
         )
         new_cols = [sfn.col(tsdf.ts_col)] + [
-            sfn.col(c).alias("{}".format(prefix) + c) for c in metricCols
+            sfn.col(c).alias(f"{prefix}{c}") for c in metricCols
         ]
         res = res.select(*groupingCols, *new_cols)
 
@@ -218,7 +212,7 @@ def aggregate(
     )
 
     # sort columns so they are consistent
-    non_part_cols = set(set(res.columns) - set(tsdf.partitionCols)) - set([tsdf.ts_col])
+    non_part_cols = set(set(res.columns) - set(tsdf.partitionCols)) - {tsdf.ts_col}
     sel_and_sort = tsdf.partitionCols + [tsdf.ts_col] + sorted(non_part_cols)
     res = res.select(sel_and_sort)
 
@@ -234,17 +228,17 @@ def aggregate(
         .withColumn(
             tsdf.ts_col,
             sfn.explode(
-                sfn.expr("sequence(from, until, interval {} {})".format(period, unit))
+                sfn.expr(f"sequence(from, until, interval {period} {unit})")
             ),
         )
         .drop("from", "until")
     )
 
-    metrics = []
-    for col in res.dtypes:
-        if col[1] in ["long", "double", "decimal", "integer", "float", "int"]:
-            metrics.append(col[0])
-
+    metrics = [
+        col[0]
+        for col in res.dtypes
+        if col[1] in ["long", "double", "decimal", "integer", "float", "int"]
+    ]
     if fill:
         res = imputes.join(
             res, tsdf.partitionCols + [tsdf.ts_col], "leftouter"
@@ -272,9 +266,7 @@ def checkAllowableFreq(freq: Optional[str]) -> Tuple[Union[int | str], str]:
         freq.lower(),
         ALLOWED_FREQ_KEYS,
     ):
-        allowable_freq = 1, freq
-        return allowable_freq
-
+        return 1, freq
     try:
         periods = freq.lower().split(" ")[0].strip()
         units = freq.lower().split(" ")[1].strip()
@@ -283,25 +275,24 @@ def checkAllowableFreq(freq: Optional[str]) -> Tuple[Union[int | str], str]:
             "Allowable grouping frequencies are microsecond (musec), millisecond (ms), sec (second), min (minute), hr (hour), day. Reformat your frequency as <integer> <day/hour/minute/second>"
         )
 
-    if is_valid_allowed_freq_keys(
+    if not is_valid_allowed_freq_keys(
         units.lower(),
         ALLOWED_FREQ_KEYS,
     ):
-        if units.startswith(MUSEC):
-            allowable_freq = periods, MUSEC
-        elif units.startswith(MS) | units.startswith("millis"):
-            allowable_freq = periods, MS
-        elif units.startswith(SEC):
-            allowable_freq = periods, SEC
-        elif units.startswith(MIN):
-            allowable_freq = periods, MIN
-        elif units.startswith("hour") | units.startswith(HR):
-            allowable_freq = periods, "hour"
-        elif units.startswith(DAY):
-            allowable_freq = periods, DAY
-    else:
         raise ValueError(f"Invalid value for `freq` argument: {freq}.")
 
+    if units.startswith(MUSEC):
+        allowable_freq = periods, MUSEC
+    elif units.startswith(MS) | units.startswith("millis"):
+        allowable_freq = periods, MS
+    elif units.startswith(SEC):
+        allowable_freq = periods, SEC
+    elif units.startswith(MIN):
+        allowable_freq = periods, MIN
+    elif units.startswith("hour") | units.startswith(HR):
+        allowable_freq = periods, "hour"
+    elif units.startswith(DAY):
+        allowable_freq = periods, DAY
     return allowable_freq
 
 
