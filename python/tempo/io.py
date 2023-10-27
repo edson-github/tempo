@@ -31,11 +31,6 @@ def write(
     df = tsdf.df
     ts_col = tsdf.ts_col
     partitionCols = tsdf.partitionCols
-    if optimizationCols:
-        optimizationCols = optimizationCols + ["event_time"]
-    else:
-        optimizationCols = ["event_time"]
-
     useDeltaOpt = os.getenv("DATABRICKS_RUNTIME_VERSION") is not None
 
     view_df = df.withColumn("event_dt", sfn.to_date(sfn.col(ts_col))).withColumn(
@@ -53,17 +48,18 @@ def write(
     )
 
     if useDeltaOpt:
+        optimizationCols = (
+            optimizationCols + ["event_time"]
+            if optimizationCols
+            else ["event_time"]
+        )
         try:
             spark.sql(
-                "optimize {} zorder by {}".format(
-                    tabName, "(" + ",".join(partitionCols + optimizationCols) + ")"
-                )
+                f'optimize {tabName} zorder by {"(" + ",".join(partitionCols + optimizationCols) + ")"}'
             )
         except ParseException as e:
             logger.error(
-                "Delta optimizations attempted, but was not successful.\nError: {}".format(
-                    e
-                )
+                f"Delta optimizations attempted, but was not successful.\nError: {e}"
             )
     else:
         logger.warning(

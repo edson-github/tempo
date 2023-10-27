@@ -134,35 +134,6 @@ class Interpolation:
         )
 
         # Handle zero fill
-        if method == "zero":
-            output_df = output_df.withColumn(
-                target_col,
-                sfn.when(
-                    sfn.col(f"is_interpolated_{target_col}") == False,  # noqa: E712
-                    sfn.col(target_col),
-                ).otherwise(sfn.lit(0)),
-            )
-
-        # Handle null fill
-        if method == "null":
-            output_df = output_df.withColumn(
-                target_col,
-                sfn.when(
-                    sfn.col(f"is_interpolated_{target_col}") == False,  # noqa: E712
-                    sfn.col(target_col),
-                ).otherwise(None),
-            )
-
-        # Handle forward fill
-        if method == "ffill":
-            output_df = output_df.withColumn(
-                target_col,
-                sfn.when(
-                    sfn.col(f"is_interpolated_{target_col}") == True,  # noqa: E712
-                    sfn.col(f"previous_{target_col}"),
-                ).otherwise(sfn.col(target_col)),
-            )
-        # Handle backwards fill
         if method == "bfill":
             output_df = output_df.withColumn(
                 target_col,
@@ -183,12 +154,37 @@ class Interpolation:
                 ),
             )
 
-        # Handle linear fill
-        if method == "linear":
+        elif method == "ffill":
+            output_df = output_df.withColumn(
+                target_col,
+                sfn.when(
+                    sfn.col(f"is_interpolated_{target_col}") == True,  # noqa: E712
+                    sfn.col(f"previous_{target_col}"),
+                ).otherwise(sfn.col(target_col)),
+            )
+        elif method == "linear":
             output_df = self.__calc_linear_spark(
                 output_df,
                 ts_col,
                 target_col,
+            )
+
+        elif method == "null":
+            output_df = output_df.withColumn(
+                target_col,
+                sfn.when(
+                    sfn.col(f"is_interpolated_{target_col}") == False,  # noqa: E712
+                    sfn.col(target_col),
+                ).otherwise(None),
+            )
+
+        elif method == "zero":
+            output_df = output_df.withColumn(
+                target_col,
+                sfn.when(
+                    sfn.col(f"is_interpolated_{target_col}") == False,  # noqa: E712
+                    sfn.col(target_col),
+                ).otherwise(sfn.lit(0)),
             )
 
         return output_df
@@ -424,10 +420,11 @@ class Interpolation:
         )
 
         # Hide is_interpolated columns based on flag
-        if show_interpolated is False:
+        if not show_interpolated:
             interpolated_col_names = ["is_ts_interpolated"]
-            for column in target_cols:
-                interpolated_col_names.append(f"is_interpolated_{column}")
+            interpolated_col_names.extend(
+                f"is_interpolated_{column}" for column in target_cols
+            )
             output = output.drop(*interpolated_col_names)
 
         return output

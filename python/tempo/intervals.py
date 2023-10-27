@@ -10,9 +10,7 @@ from pyspark.sql.window import Window, WindowSpec
 
 
 def is_metric_col(col: StructField) -> bool:
-    return isinstance(col.dataType, NumericType) or isinstance(
-        col.dataType, BooleanType
-    )
+    return isinstance(col.dataType, (NumericType, BooleanType))
 
 
 class IntervalsDF:
@@ -483,7 +481,7 @@ class IntervalsDF:
 
         (non_subset_df, overlap_indicators) = self.__identify_overlaps(non_subset_df)
 
-        overlaps_predicate = " OR ".join(tuple(col for col in overlap_indicators))
+        overlaps_predicate = " OR ".join(tuple(overlap_indicators))
 
         overlaps_df = non_subset_df.filter(overlaps_predicate)
 
@@ -600,19 +598,17 @@ class IntervalsDF:
 
         """
 
-        if stack:
-            n_cols = len(self.metric_columns)
-            metric_cols_expr = ",".join(
-                tuple(f"'{col}', {col}" for col in self.metric_columns)
-            )
-
-            stack_expr = (
-                f"STACK({n_cols}, {metric_cols_expr}) AS (metric_name, metric_value)"
-            )
-
-            return self.df.select(
-                *self.interval_boundaries, *self.series_ids, sfn.expr(stack_expr)
-            ).dropna(subset="metric_value")
-
-        else:
+        if not stack:
             return self.df
+        n_cols = len(self.metric_columns)
+        metric_cols_expr = ",".join(
+            tuple(f"'{col}', {col}" for col in self.metric_columns)
+        )
+
+        stack_expr = (
+            f"STACK({n_cols}, {metric_cols_expr}) AS (metric_name, metric_value)"
+        )
+
+        return self.df.select(
+            *self.interval_boundaries, *self.series_ids, sfn.expr(stack_expr)
+        ).dropna(subset="metric_value")

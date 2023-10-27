@@ -78,24 +78,22 @@ class SparkTest(unittest.TestCase):
     def get_data_as_tsdf(self, name: str, convert_ts_col=True):
         df = self.get_data_as_sdf(name, convert_ts_col)
         td = self.test_data[name]
-        tsdf = TSDF(
+        return TSDF(
             df,
             ts_col=td["ts_col"],
             partition_cols=td.get("partition_cols", None),
             sequence_col=td.get("sequence_col", None),
         )
-        return tsdf
 
     def get_data_as_idf(self, name: str, convert_ts_col=True):
         df = self.get_data_as_sdf(name, convert_ts_col)
         td = self.test_data[name]
-        idf = IntervalsDF(
+        return IntervalsDF(
             df,
             start_ts=td["start_ts"],
             end_ts=td["end_ts"],
             series_ids=td.get("series", None),
         )
-        return idf
 
     TEST_DATA_FOLDER = "unit_test_data"
 
@@ -157,12 +155,12 @@ class SparkTest(unittest.TestCase):
         # build dataframe
         df = self.spark.createDataFrame(data, schema)
 
+        ts_pattern = r"^\d{4}-\d{2}-\d{2}| \d{2}:\d{2}:\d{2}\.\d*$"
+        decimal_pattern = r"[.]\d+"
         # check if ts_col follows standard timestamp format, then check if timestamp has micro/nanoseconds
         for tsc in ts_cols:
             ts_value = str(df.select(ts_cols).limit(1).collect()[0][0])
-            ts_pattern = r"^\d{4}-\d{2}-\d{2}| \d{2}:\d{2}:\d{2}\.\d*$"
-            decimal_pattern = r"[.]\d+"
-            if re.match(ts_pattern, str(ts_value)) is not None:
+            if re.match(ts_pattern, ts_value) is not None:
                 if (
                     re.search(decimal_pattern, ts_value) is None
                     or len(re.search(decimal_pattern, ts_value)[0]) <= 4

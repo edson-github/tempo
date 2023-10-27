@@ -226,7 +226,7 @@ class TSDF:
         )
 
         # generate expressions to find the last value of each right-hand column
-        if ignoreNulls is False:
+        if not ignoreNulls:
             if tsPartitionVal is not None:
                 raise ValueError(
                     "Disabling null skipping with a partition value is not supported yet."
@@ -353,7 +353,7 @@ class TSDF:
 
         """
         # The columns which will be a mandatory requirement while selecting from TSDFs
-        seq_col_stub = [] if bool(self.sequence_col) is False else [self.sequence_col]
+        seq_col_stub = [] if not bool(self.sequence_col) else [self.sequence_col]
         mandatory_cols = [self.ts_col] + self.partitionCols + seq_col_stub
         if set(mandatory_cols).issubset(set(cols)):
             return TSDF(
@@ -660,9 +660,7 @@ class TSDF:
         """
 
         df.createOrReplaceTempView("view")
-        plan = spark.sql("explain cost select * from view").collect()[0][0]
-
-        return plan
+        return spark.sql("explain cost select * from view").collect()[0][0]
 
     def __getBytesFromPlan(self, df: DataFrame, spark: SparkSession) -> float:
         """
@@ -690,15 +688,13 @@ class TSDF:
 
         # perform to MB for threshold check
         if units == "GiB":
-            plan_bytes = float(size) * 1024 * 1024 * 1024
-        elif units == "MiB":
-            plan_bytes = float(size) * 1024 * 1024
+            return float(size) * 1024 * 1024 * 1024
         elif units == "KiB":
-            plan_bytes = float(size) * 1024
+            return float(size) * 1024
+        elif units == "MiB":
+            return float(size) * 1024 * 1024
         else:
-            plan_bytes = float(size)
-
-        return plan_bytes
+            return float(size)
 
     def asofJoin(
         self,
@@ -750,7 +746,7 @@ class TSDF:
                 right_cols = list(set(right_df.columns) - set(right_tsdf.partitionCols))
 
                 left_prefix = left_prefix + "_" if left_prefix else ""
-                right_prefix = right_prefix + "_" if right_prefix else ""
+                right_prefix = f"{right_prefix}_" if right_prefix else ""
 
                 w = Window.partitionBy(*partition_cols).orderBy(
                     right_prefix + right_tsdf.ts_col
@@ -1171,10 +1167,7 @@ class TSDF:
         parsed_freq = t_resample.checkAllowableFreq(freq)
         period, unit = parsed_freq[0], parsed_freq[1]
         agg_window = sfn.window(
-            sfn.col(self.ts_col),
-            "{} {}".format(
-                period, t_resample.freq_dict[unit]  # type: ignore[literal-required]
-            ),
+            sfn.col(self.ts_col), f"{period} {t_resample.freq_dict[unit]}"
         )
 
         # compute column summaries
@@ -1232,7 +1225,7 @@ class TSDF:
         t_resample.validateFuncExists(func)
 
         # Throw warning for user to validate that the expected number of output rows is valid.
-        if fill is True and perform_checks is True:
+        if fill is True and perform_checks:
             t_utils.calculate_time_horizon(
                 self.df, self.ts_col, freq, self.partitionCols
             )
@@ -1313,23 +1306,26 @@ class TSDF:
 
         return TSDF(interpolated_df, ts_col=ts_col, partition_cols=partition_cols)
 
-    def calc_bars(
-        tsdf,
-        freq: str,
-        metricCols: Optional[List[str]] = None,
-        fill: Optional[bool] = None,
-    ) -> "TSDF":
-        resample_open = tsdf.resample(
-            freq=freq, func="floor", metricCols=metricCols, prefix="open", fill=fill
+    def calc_bars(self, freq: str, metricCols: Optional[List[str]] = None, fill: Optional[bool] = None) -> "TSDF":
+        resample_open = self.resample(
+            freq=freq,
+            func="floor",
+            metricCols=metricCols,
+            prefix="open",
+            fill=fill,
         )
-        resample_low = tsdf.resample(
+        resample_low = self.resample(
             freq=freq, func="min", metricCols=metricCols, prefix="low", fill=fill
         )
-        resample_high = tsdf.resample(
+        resample_high = self.resample(
             freq=freq, func="max", metricCols=metricCols, prefix="high", fill=fill
         )
-        resample_close = tsdf.resample(
-            freq=freq, func="ceil", metricCols=metricCols, prefix="close", fill=fill
+        resample_close = self.resample(
+            freq=freq,
+            func="ceil",
+            metricCols=metricCols,
+            prefix="close",
+            fill=fill,
         )
 
         join_cols = resample_open.partitionCols + [resample_open.ts_col]
@@ -1338,9 +1334,9 @@ class TSDF:
             .join(resample_low.df, join_cols)
             .join(resample_close.df, join_cols)
         )
-        non_part_cols = set(set(bars.columns) - set(resample_open.partitionCols)) - set(
-            [resample_open.ts_col]
-        )
+        non_part_cols = set(
+            set(bars.columns) - set(resample_open.partitionCols)
+        ) - {resample_open.ts_col}
         sel_and_sort = (
             resample_open.partitionCols + [resample_open.ts_col] + sorted(non_part_cols)
         )

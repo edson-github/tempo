@@ -17,7 +17,7 @@ import tempo.resample as t_resample
 import tempo.tsdf as t_tsdf
 
 logger = logging.getLogger(__name__)
-IS_DATABRICKS = "DB_HOME" in os.environ.keys()
+IS_DATABRICKS = "DB_HOME" in os.environ
 
 """
 DB_HOME env variable has been chosen and that's because this variable is a special variable that will be available in DBR.
@@ -42,12 +42,7 @@ def _is_capable_of_html_rendering() -> bool:
     """
     try:
         shell = get_ipython().__class__.__name__
-        if shell == "ZMQInteractiveShell":
-            return True  # Jupyter notebook or qtconsole
-        elif shell == "TerminalInteractiveShell":
-            return False  # Terminal running IPython
-        else:
-            return False  # Other type (?)
+        return shell == "ZMQInteractiveShell"
     except NameError:
         return False
 
